@@ -14,3 +14,7 @@ runs/
 output/
 dist/
 *.egg-info/
+# llmping-run (scripts/) runtime artifacts
+history/
+site/
+probes.yaml
