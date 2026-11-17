@@ -728,13 +728,23 @@ def test_short_options_attached_values(tmp_path, mock_server):
     assert report["stats"]["sent"] == 2
 
 
+def _strip_ansi(text: str) -> str:
+    """Remove ANSI escape codes — on GitHub Actions runners typer's rich
+    help renders WITH color (GITHUB_ACTIONS makes rich auto-enable it),
+    so help-output assertions must run on the plain text."""
+    import re
+
+    return re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", text)
+
+
 def test_short_help_flag(tmp_path):
     # -h and --help are the same option.
     short = runner.invoke(app, ["-h"])
     long = runner.invoke(app, ["--help"])
     assert short.exit_code == 0 and long.exit_code == 0
-    assert "Ping OpenAI-compatible LLM servers" in short.output
-    assert "--provider" in short.output and "-p" in short.output
+    plain = _strip_ansi(short.output)
+    assert "Ping OpenAI-compatible LLM servers" in plain
+    assert "--provider" in plain and "-p" in plain
 
 
 def test_bare_short_scenario_lists_names(tmp_path):
