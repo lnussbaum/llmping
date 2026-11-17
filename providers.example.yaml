@@ -1,0 +1,32 @@
+# llmping providers — endpoints + auth per named provider.
+# Copy to providers.yaml (./providers.yaml, or ~/.config/llmping/
+# providers.yaml for a machine-wide setup) and edit; providers.yaml is
+# gitignored (tokens live here, never in .env, never on the command line —
+# there are no --base-url/--token flags). One run talks to exactly one
+# provider, chosen with `--provider NAME` (or $LLMPING_PROVIDER, or the
+# provider named 'default'); `--model` names the single model to ping —
+# there is no other config file.
+#
+# base_url/token may be omitted here and supplied via the environment
+# instead: LLMPING_BASE_URL_<NAME> / LLMPING_TOKEN_<NAME> (name uppercased,
+# non-alphanumeric → "_", e.g. my-prov → LLMPING_TOKEN_MY_PROV) override the
+# global LLMPING_BASE_URL / LLMPING_TOKEN. An explicit value in this file
+# always wins over the environment; an explicit empty token: "" means "no
+# auth" and is kept as-is.
+
+providers:
+  - name: local-vllm
+    base_url: http://localhost:8000/v1
+    token: ""                 # empty ⇒ Authorization header omitted
+  - name: local-sglang
+    base_url: http://localhost:30000/v1
+    token: ""
+  - name: ollama
+    base_url: http://localhost:11434/v1
+    token: ""
+  - name: prod
+    base_url: https://api.example.fr/v1
+    token: s3cr3t             # put a real token here, never commit it
+  # - name: ci
+  #   # base_url/token injected via LLMPING_BASE_URL_CI / LLMPING_TOKEN_CI —
+  #   # nothing secret in the file
