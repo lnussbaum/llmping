@@ -472,6 +472,11 @@ def cli(
     ts = time.strftime("%Y%m%dT%H%M%S")
     run_name = f"{prov.name}_{target.model}_{scenario}_{ts}"
     run_dir = rundir.RunDir(Path(runs_dir), run_name) if dump_traffic else rundir.RunDir.none()
+    if dump_traffic:
+        # table mode: stdout, so the path travels with the normal output;
+        # json mode: stderr, so the stdout report stays machine-readable
+        assert run_dir.path is not None
+        (console if fmt != "json" else err_console).print(f"traffic dump: {run_dir.path}/")
     dump = _traffic_dump(dump_traffic, Path(runs_dir), run_dir)
     t0 = time.time()
     started = rundir.now_iso()

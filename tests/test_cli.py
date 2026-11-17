@@ -812,6 +812,11 @@ def test_traffic_dump_closed_after_run(tmp_path, mock_server, monkeypatch):
         real_close(self)
 
     def boom(*args, **kwargs):
+        # The pre-run "traffic dump:" line legitimately prints; only the
+        # post-run summary printing should raise here. (Patched on the
+        # class, so args[0] is the console instance itself.)
+        if len(args) > 1 and isinstance(args[1], str) and args[1].startswith("traffic dump:"):
+            return
         raise OSError("disk full")
 
     monkeypatch.setattr(rundir.TrafficDump, "close", spy_close)
