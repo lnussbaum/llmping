@@ -153,7 +153,10 @@ no `config.yaml` — what to ping is given entirely on the command line.
   is on, holding the exchange log split **per round/seq**:
   `traffic-<seq>.jsonl` (one timestamped, kind-tagged JSON line per
   exchange; bodies raw AND decoded, auth headers masked) — handy for
-  inspecting actual SSE from proxies. `/` (and `\`, NUL) in
+  inspecting actual SSE from proxies. When the dump is on, the CLI prints
+  `traffic dump: <path>/` first thing (stdout in table mode, stderr under
+  `--format json` so the report stays pure) so the traces are one
+  copy-paste away. `/` (and `\`, NUL) in
   provider/model/scenario names is escaped to `_` (`RunDir._escape_name`)
   so a name can't break out of the runs dir; a same-second collision
   appends `-1`, `-2`, … (atomic `mkdir`, so concurrent runs never share or

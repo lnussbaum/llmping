@@ -51,7 +51,8 @@ Assets: a run writes **nothing** to disk in its default form — the JSON
 report goes to stdout (`--format json`); with `--dump-traffic`, raw wire
 traffic lands in
 `runs/<provider>_<model>_<scenario>_<ts>/traffic-<seq>.jsonl` (bodies both
-raw and decoded, auth redacted, `/` in names escaped).
+raw and decoded, auth redacted, `/` in names escaped) and llmping prints
+the run-dir path up front so the traces are one copy-paste away.
 
 ## Install
 

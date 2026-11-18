@@ -8,7 +8,8 @@ provider query. Endpoints/auth come from providers.yaml (with
 LLMPING_BASE_URL*/LLMPING_TOKEN* env fallback) — never from CLI flags,
 so secrets stay out of shell history and `ps`. What to ping is given
 on the command line (no config.yaml). Nothing is written to disk
-unless `--dump-traffic` is on (the JSON report is stdout-only).
+unless `--dump-traffic` is on (the JSON report is stdout-only; the
+run-dir path is printed when the dump is on).
 """
 
 from __future__ import annotations
