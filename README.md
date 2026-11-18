@@ -96,10 +96,12 @@ repeating `--model` is a usage error — run one llmping per model.
 Run flags: `--providers`, `--runs-dir`, `--dump-traffic` (log
 every HTTP exchange — raw + decoded — to
 `<runs-dir>/<provider>_<model>_<scenario>_<ts>/traffic-<seq>.jsonl`),
+`--pad N` (N chars of inert padding appended to the first user message —
+grows the prompt to exercise token accounting; input tokens are reported),
 `--format table|json` (JSON prints the report on stdout, status on stderr).
 The JSON report carries `provider`, `model`, `scenario`, `stats`
-(sent/replies/loss_pct/e2e/ttft/tokens/chars/turns — flat, not keyed by
-model), `duration_s`,
+(sent/replies/loss_pct/e2e/ttft/tokens/input_tokens/chars/turns — flat,
+not keyed by model), `duration_s`,
 `timestamp` (run start, ISO-8601 UTC), `base_url` and `providers_path`.
 The CLI is one command — no subcommand.
 Short options: `-p` provider, `-m` model, `-s` scenario, `-c` count,

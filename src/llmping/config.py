@@ -140,10 +140,11 @@ class ProvidersConfig(BaseModel):
 
 
 class Target(BaseModel):
-    """One thing to ping: a bare API model name (+ the scenario to run and
-    optional extra request body), resolved against the run's single provider.
-    Built by the CLI from `--model`/`--scenario`/`--extra-body` — it never
-    comes from YAML. `scenario` defaults to `pingpong`, the plain probe.
+    """One thing to ping: a bare API model name, the scenario to run, an
+    optional extra request body, and optional inert `padding` to grow the
+    prompt — resolved against the run's single provider. Built by the CLI
+    from `--model`/`--scenario`/`--extra-body`/`--pad` — it never comes
+    from YAML. `scenario` defaults to `pingpong`, the plain probe.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -153,6 +154,9 @@ class Target(BaseModel):
     # plain probe (one turn, no tools). Every target runs a scenario.
     scenario: str = DEFAULT_SCENARIO
     extra_body: dict[str, Any] = Field(default_factory=dict)
+    # Inert characters appended to the first user message, to artificially
+    # grow the prompt (e.g. measure token accounting at a given size). 0 = off.
+    padding: int = Field(default=0, ge=0)
 
     @model_validator(mode="wrap")
     @classmethod

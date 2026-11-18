@@ -8,7 +8,7 @@ from dataclasses import replace
 import pytest
 
 from llmping.client import ChatResult, LLMClient, ToolCall
-from llmping.config import Target
+from llmping.config import ConfigError, Target
 from llmping.ping import _run_scenario, run_ping
 from llmping.scenario import BUGGY_HELLO, FIXED_HELLO, HELLO_PATH, load_scenario
 
@@ -408,3 +408,53 @@ async def test_ping_agentic_pipeline_session(mock_server):
     assert sample.ttft_ms is not None
     assert sample.chars is not None and sample.chars > 0
     assert stats[0].stats()["loss_pct"] == 0.0
+
+
+# --- --pad: inert padding grows the prompt; input tokens are reported ------
+
+
+async def test_ping_pad_grows_prompt_tokens(mock_server):
+    # The mock counts 4 chars ≈ 1 token, so 4000 pad chars ≈ +1000 tokens.
+    # Baseline vs padded input_tokens must differ by that much (rounded
+    # by the mock's integer counting).
+    async with LLMClient(mock_server.base_url) as client:
+        base, _ = await run_ping(client, _cfg(), count=1, interval=0)
+        padded, _ = await run_ping(client, [Target(model="m", padding=4000)], count=1, interval=0)
+    b = base[0].samples[0].input_tokens
+    p = padded[0].samples[0].input_tokens
+    assert b is not None and p is not None
+    assert p - b >= 950  # 4000/4, minus counting noise
+    assert padded[0].samples[0].ok  # the reply is unaffected by padding
+    assert padded[0].stats()["input_tokens"] == p  # summed into the report
+
+
+async def test_ping_pad_zero_is_identity(mock_server):
+    # padding=0 (the default) must not alter the conversation at all.
+    async with LLMClient(mock_server.base_url) as client:
+        stats, _ = await run_ping(client, [Target(model="m", padding=0)], count=1, interval=0)
+    sample = stats[0].samples[0]
+    assert sample.ok
+    unpadded, _ = await run_ping(client, _cfg(), count=1, interval=0)
+    assert sample.input_tokens == unpadded[0].samples[0].input_tokens
+
+
+async def test_ping_pad_across_scenarios(mock_server):
+    # Padding wraps the FIRST user message of any scenario, so an agentic
+    # session's turn-2 prompt carries the padding too (all turns sum).
+    async with LLMClient(mock_server.base_url) as client:
+        stats, _ = await run_ping(
+            client,
+            [Target(model="m", scenario="agentic-basic", padding=2000)],
+            count=1,
+            interval=0,
+        )
+    sample = stats[0].samples[0]
+    assert sample.ok, sample.error
+    assert sample.input_tokens is not None and sample.input_tokens > 500
+
+
+def test_target_padding_validation():
+    import pytest
+
+    with pytest.raises(ConfigError, match="padding"):
+        Target(model="m", padding=-1)  # type: ignore[arg-type]

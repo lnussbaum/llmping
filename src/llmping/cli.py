@@ -2,7 +2,8 @@
 error · 130 Ctrl-C on `--count inf`.
 
 Single command — no subcommand. Usage shape: `llmping [--provider NAME]
---model MODEL [--scenario NAME] [--extra-body JSON]` (exactly one model
+--model MODEL [--scenario NAME] [--extra-body JSON] [--pad N]`
+(exactly one model
 per run), or `--list-models` for a pure provider query. Endpoints/auth
 come from providers.yaml (with LLMPING_BASE_URL*/LLMPING_TOKEN* env
 fallback) — never from CLI flags, so secrets stay out of shell history
@@ -362,6 +363,12 @@ def cli(
         "--extra-body",
         help="Extra request body as a JSON object, e.g. '{\"temperature\": 0}'",
     ),
+    padding: int = typer.Option(
+        0,
+        "--pad",
+        help="Characters of inert padding appended to the first user message "
+        "(grows the prompt; input tokens are reported)",
+    ),
     # --- output ---------------------------------------------------------- #
     fmt: str = typer.Option("table", "-f", "--format", help="table | json"),
     dump_traffic: bool = typer.Option(
@@ -443,7 +450,10 @@ def cli(
     model_name = model[0]
     try:
         target = Target(
-            model=model_name, scenario=scenario, extra_body=_parse_extra_body(extra_body)
+            model=model_name,
+            scenario=scenario,
+            extra_body=_parse_extra_body(extra_body),
+            padding=padding,
         )
     except ConfigError as exc:
         _err(str(exc))
@@ -493,6 +503,8 @@ def cli(
             )
             if sample.turns is not None:
                 line += f" turns={sample.turns}"
+            if sample.input_tokens is not None:
+                line += f" in={sample.input_tokens}"
             if sample.output_tokens is not None:
                 line += f" tokens={sample.output_tokens}"
             if sample.chars is not None:
@@ -548,6 +560,8 @@ def cli(
     console.print(f"scenario: {escape(scenario)}")
     console.print(f"target: {escape(prov.base_url)}")
     console.print(f"{st['sent']} requests sent, {st['replies']} received, {st['loss_pct']}% loss")
+    if st.get("input_tokens"):
+        console.print(f"input tokens: {st['input_tokens']} total (server-counted, all turns)")
     e2e_stats = st["e2e"]
     if e2e_stats["min"] is not None:
         ems = (

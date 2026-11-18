@@ -36,15 +36,19 @@ class ToolCall:
 
 @dataclass
 class Usage:
-    # Only what ping consumes: the completion count. The full raw block is
-    # still recorded verbatim in --dump-traffic when debugging.
+    # What ping consumes: the token counts from the server's usage block.
+    # The full raw block is still recorded verbatim in --dump-traffic.
     completion_tokens: int | None = None
+    prompt_tokens: int | None = None
 
 
 def _parse_usage(raw: dict | None) -> Usage | None:
     if not raw:
         return None
-    return Usage(completion_tokens=raw.get("completion_tokens"))
+    return Usage(
+        completion_tokens=raw.get("completion_tokens"),
+        prompt_tokens=raw.get("prompt_tokens"),
+    )
 
 
 @dataclass

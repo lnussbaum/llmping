@@ -26,9 +26,10 @@ auth only (`providers:` list of `name` / `base_url` / `token`). There is
 no `config.yaml` — what to ping is given entirely on the command line.
 
 - A **target** = `--model MODEL` against the run's one provider, plus the
-  scenario to run (`--scenario NAME`, default `pingpong`) and optional
-  `--extra-body JSON`. The CLI builds a slim `Target(model, scenario,
-  extra_body)` — no name, no provider field
+  scenario to run (`--scenario NAME`, default `pingpong`), optional
+  `--extra-body JSON`, and optional `--pad N` prompt shaping.
+  The CLI builds a slim `Target(model, scenario, extra_body, padding)`
+  — no name, no provider field
   (`src/llmping/config.py`, plus a wrap validator so any pydantic failure
   surfaces as `ConfigError` → exit 2).
 - One run = one provider + **one model**: `--provider NAME` (optional —
@@ -186,7 +187,13 @@ no `config.yaml` — what to ping is given entirely on the command line.
     one turn) or spread over turns (qwen-3.8-27b reads one file per turn) —
     gets its own mocked result handed back.
   - Metrics: `ttft` = turn-1 first token; `e2e` spans the whole session;
-    `tokens`/`chars` sum all turns; live line + report carry `turns=`.
+    `tokens`/`chars` sum all turns; live line + report carry `turns=`;
+    `input_tokens` sums the server-counted prompt size of every turn
+    (reported as `in=` on the live line and `input_tokens` in the stats).
+  - **`--pad N`** appends N inert characters to the first user message of
+    any scenario (growing every later turn with it) — used to exercise
+    size-dependent behavior/token accounting; `Target.padding` (≥ 0,
+    invalid → exit 2), applied in `_run_scenario` via `_pad`.
   - Round ok requires, in order: required tool called (tool-less scenarios
     skip this); **non-empty visible `content`** final answer
     (`reasoning_content` alone doesn't count — thinking models stop after a

@@ -26,6 +26,22 @@ def _len_chars(*texts: str) -> int:
     return sum(len(t) for t in texts)
 
 
+def _pad(text: str, n: int) -> str:
+    """Append n inert characters to grow the prompt without adding meaning:
+    a headline plus padding lines of repeated 'x'. Deterministic, so the
+    server sees byte-identical filler across rounds."""
+    if n <= 0:
+        return text
+    filler = "x" * 60
+    lines = [f"{text}", "", "Padding begins (ignore everything below):"]
+    remaining = n - len(lines[2]) - 2
+    while remaining > 0:
+        chunk = filler if remaining >= 60 else "x" * remaining
+        lines.append(chunk)
+        remaining -= len(chunk)
+    return "\n".join(lines)[: len(text) + n]
+
+
 class ProbeResult(TypedDict):
     """What one probe/scenario session reports (turns into a `Sample`)."""
 
@@ -33,6 +49,7 @@ class ProbeResult(TypedDict):
     error: str | None
     ttft_ms: float | None
     e2e_ms: float | None
+    input_tokens: int | None
     output_tokens: int | None
     chars: int | None
     turns: int | None
@@ -47,6 +64,7 @@ class ModelStats(TypedDict):
     e2e: metrics.LatencyStats
     ttft: metrics.LatencyStats
     tokens: int
+    input_tokens: int
     chars: int
     turns: int
 
@@ -58,6 +76,7 @@ class Sample:
     ok: bool = True
     ttft_ms: float | None = None
     e2e_ms: float | None = None
+    input_tokens: int | None = None
     output_tokens: int | None = None
     chars: int | None = None
     turns: int | None = None
@@ -89,6 +108,7 @@ class PingStats:
             "e2e": metrics.ping_stats(self.e2es()),
             "ttft": metrics.ping_stats(self.ttfts()),
             "tokens": sum(s.output_tokens or 0 for s in self.samples),
+            "input_tokens": sum(s.input_tokens or 0 for s in self.samples),
             "chars": sum(s.chars or 0 for s in self.samples),
             "turns": sum(s.turns or 0 for s in self.samples),
         }
@@ -155,7 +175,9 @@ async def _run_scenario(client: LLMClient, entry: Target, scenario: Scenario) ->
     messages: list[dict[str, Any]] = []
     if scenario.system_prompt:
         messages.append({"role": "system", "content": scenario.system_prompt})
-    messages.append({"role": "user", "content": scenario.user_prompt})
+    # --pad N: inert characters grow the FIRST user message (and with it the
+    # whole conversation — every later turn repeats the messages)
+    messages.append({"role": "user", "content": _pad(scenario.user_prompt, entry.padding)})
     tools = [t.schema() for t in scenario.tools]
     # None for the tool-less plain probe; __post_init__ guarantees that a
     # scenario with tools names one of them as required_tool.
@@ -163,6 +185,7 @@ async def _run_scenario(client: LLMClient, entry: Target, scenario: Scenario) ->
 
     ttft: float | None = None
     e2e = 0.0
+    input_tokens = 0
     output_tokens = 0
     chars = 0
     required_called = not forced_tool  # nothing to force for the plain probe
@@ -175,6 +198,7 @@ async def _run_scenario(client: LLMClient, entry: Target, scenario: Scenario) ->
             "error": error,
             "ttft_ms": ttft,
             "e2e_ms": e2e,
+            "input_tokens": input_tokens,
             "output_tokens": output_tokens,
             "chars": chars,
             "turns": turns,
@@ -206,6 +230,10 @@ async def _run_scenario(client: LLMClient, entry: Target, scenario: Scenario) ->
         if ttft is None:
             ttft = r.ttft_ms
         e2e += r.e2e_ms or 0.0
+        # input_tokens: the server's count for THIS turn's prompt; summing
+        # over turns reports the whole conversation's billed input
+        if r.usage is not None and r.usage.prompt_tokens is not None:
+            input_tokens += r.usage.prompt_tokens
         output_tokens += r.output_tokens or 0
         chars += _len_chars(r.content, r.reasoning_content)
 
@@ -302,6 +330,7 @@ async def run_ping(
                         ok=probe.get("ok", True),
                         ttft_ms=probe.get("ttft_ms"),
                         e2e_ms=probe.get("e2e_ms"),
+                        input_tokens=probe.get("input_tokens"),
                         output_tokens=probe.get("output_tokens"),
                         chars=probe.get("chars"),
                         error=probe.get("error"),

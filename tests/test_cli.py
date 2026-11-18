@@ -843,3 +843,25 @@ def test_traffic_dump_closed_after_run(tmp_path, mock_server, monkeypatch):
     )
     assert result.exit_code != 0
     assert closed == [True]
+
+
+def test_pad_option_reports_input_tokens(tmp_path, mock_server):
+    # --pad N grows the first user message by N chars; the live line and
+    # the summary report the server-counted input tokens (mock: 4 chars
+    # per token, so 4000 pad chars ≈ +1000 tokens).
+    pv = _write_providers(tmp_path, mock_server.base_url)
+    base = runner.invoke(app, _ping_args(pv, model="mistral"))
+    padded = runner.invoke(app, [*_ping_args(pv, model="mistral"), "--pad", "4000"])
+    assert base.exit_code == 0 and padded.exit_code == 0
+    # e.g. "in=8" vs "in=~1008"
+    import re
+
+    grab = lambda out: int(re.search(r"in=(\d+)", out).group(1))  # noqa: E731
+    assert grab(padded.output) - grab(base.output) >= 950
+    assert "input tokens:" in padded.output
+
+
+def test_pad_rejected_negative(tmp_path, mock_server):
+    pv = _write_providers(tmp_path, mock_server.base_url)
+    result = runner.invoke(app, [*_ping_args(pv, model="mistral"), "--pad", "-5"])
+    assert result.exit_code == 2
