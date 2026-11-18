@@ -98,6 +98,9 @@ every HTTP exchange — raw + decoded — to
 `<runs-dir>/<provider>_<model>_<scenario>_<ts>/traffic-<seq>.jsonl`),
 `--pad N` (N chars of inert padding appended to the first user message —
 grows the prompt to exercise token accounting; input tokens are reported),
+`--nonce` (prepends a random per-round nonce to the first message — busts
+the server's KV/prefix cache so every round pays a true cold prefill; the
+server-reported cached token count shows up as `cached=`),
 `--format table|json` (JSON prints the report on stdout, status on stderr).
 The JSON report carries `provider`, `model`, `scenario`, `stats`
 (sent/replies/loss_pct/e2e/ttft/tokens/input_tokens/chars/turns — flat,

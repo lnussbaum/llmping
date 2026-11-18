@@ -1,15 +1,14 @@
 """llmping CLI. Exit codes: 0 ok · 1 degraded · 2 config/usage
 error · 130 Ctrl-C on `--count inf`.
 
-Single command — no subcommand. Usage shape: `llmping [--provider NAME]
---model MODEL [--scenario NAME] [--extra-body JSON] [--pad N]`
-(exactly one model
-per run), or `--list-models` for a pure provider query. Endpoints/auth
-come from providers.yaml (with LLMPING_BASE_URL*/LLMPING_TOKEN* env
-fallback) — never from CLI flags, so secrets stay out of shell history
-and `ps`. What to ping is given on the command line (no config.yaml).
-Nothing is written to disk unless `--dump-traffic` is on (the JSON
-report is stdout-only).
+Single command — no subcommand. Usage shape: `llmping [--provider
+NAME] --model MODEL [--scenario NAME] [--extra-body JSON] [--pad N]
+[--nonce]` (exactly one model per run), or `--list-models` for a pure
+provider query. Endpoints/auth come from providers.yaml (with
+LLMPING_BASE_URL*/LLMPING_TOKEN* env fallback) — never from CLI flags,
+so secrets stay out of shell history and `ps`. What to ping is given
+on the command line (no config.yaml). Nothing is written to disk
+unless `--dump-traffic` is on (the JSON report is stdout-only).
 """
 
 from __future__ import annotations
@@ -369,6 +368,12 @@ def cli(
         help="Characters of inert padding appended to the first user message "
         "(grows the prompt; input tokens are reported)",
     ),
+    nonce: bool = typer.Option(
+        False,
+        "--nonce",
+        help="Prepend a random nonce to the first message, busting the "
+        "server's KV/prefix cache (true cold prefill each round)",
+    ),
     # --- output ---------------------------------------------------------- #
     fmt: str = typer.Option("table", "-f", "--format", help="table | json"),
     dump_traffic: bool = typer.Option(
@@ -454,6 +459,7 @@ def cli(
             scenario=scenario,
             extra_body=_parse_extra_body(extra_body),
             padding=padding,
+            nonce=nonce,
         )
     except ConfigError as exc:
         _err(str(exc))
@@ -505,6 +511,8 @@ def cli(
                 line += f" turns={sample.turns}"
             if sample.input_tokens is not None:
                 line += f" in={sample.input_tokens}"
+            if sample.cached_tokens is not None:
+                line += f" cached={sample.cached_tokens}"
             if sample.output_tokens is not None:
                 line += f" tokens={sample.output_tokens}"
             if sample.chars is not None:
@@ -561,7 +569,9 @@ def cli(
     console.print(f"target: {escape(prov.base_url)}")
     console.print(f"{st['sent']} requests sent, {st['replies']} received, {st['loss_pct']}% loss")
     if st.get("input_tokens"):
-        console.print(f"input tokens: {st['input_tokens']} total (server-counted, all turns)")
+        cached = st.get("cached_tokens") or 0
+        cached_note = f" ({cached} cached)" if cached else ""
+        console.print(f"input tokens: {st['input_tokens']} total{cached_note} (all turns)")
     e2e_stats = st["e2e"]
     if e2e_stats["min"] is not None:
         ems = (

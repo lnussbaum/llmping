@@ -141,10 +141,11 @@ class ProvidersConfig(BaseModel):
 
 class Target(BaseModel):
     """One thing to ping: a bare API model name, the scenario to run, an
-    optional extra request body, and optional inert `padding` to grow the
-    prompt — resolved against the run's single provider. Built by the CLI
-    from `--model`/`--scenario`/`--extra-body`/`--pad` — it never comes
-    from YAML. `scenario` defaults to `pingpong`, the plain probe.
+    optional extra request body, and optional prompt shaping (`padding` to
+    grow the prompt, `nonce` to bust the server's KV cache) — resolved
+    against the run's single provider. Built by the CLI from
+    `--model`/`--scenario`/`--extra-body`/`--pad`/`--nonce` — it never
+    comes from YAML. `scenario` defaults to `pingpong`, the plain probe.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -157,6 +158,11 @@ class Target(BaseModel):
     # Inert characters appended to the first user message, to artificially
     # grow the prompt (e.g. measure token accounting at a given size). 0 = off.
     padding: int = Field(default=0, ge=0)
+    # Prepend a random nonce line to the first user message, busting the
+    # server's KV/prefix cache so every round pays a true cold prefill.
+    # Off by default: warm rounds match repeated-workload reality; use this
+    # when measuring prefill/latency sensitivity or with padding.
+    nonce: bool = False
 
     @model_validator(mode="wrap")
     @classmethod

@@ -865,3 +865,14 @@ def test_pad_rejected_negative(tmp_path, mock_server):
     pv = _write_providers(tmp_path, mock_server.base_url)
     result = runner.invoke(app, [*_ping_args(pv, model="mistral"), "--pad", "-5"])
     assert result.exit_code == 2
+
+
+def test_nonce_flag_on_live_line(tmp_path, mock_server):
+    # --nonce busts the KV cache per round; the live line carries the
+    # server-reported cached= figure either way.
+    pv = _write_providers(tmp_path, mock_server.base_url)
+    result = runner.invoke(app, [*_ping_args(pv, model="mistral"), "--nonce", "--count", "2"])
+    assert result.exit_code == 0, result.output
+    out = result.output
+    assert out.count("[nonce") == 0  # the nonce is outbound, not printed
+    assert "cached=" in out  # cached= appears on both rounds

@@ -458,3 +458,72 @@ def test_target_padding_validation():
 
     with pytest.raises(ConfigError, match="padding"):
         Target(model="m", padding=-1)  # type: ignore[arg-type]
+
+
+# --- --nonce / cached tokens -------------------------------------------------
+
+
+async def test_ping_nonce_varies_first_message(mock_server):
+    # Each nonced round must start with a DIFFERENT nonce line — the whole
+    # point is busting the sequential prefix KV-cache. Spy on what the
+    # client sends in two rounds.
+    async with LLMClient(mock_server.base_url) as client:
+        sent: list[str] = []
+        orig = client.chat
+
+        async def chat_wrapper(model, messages, **kw):  # type: ignore[no-untyped-def]
+            sent.append(messages[0]["content"] if messages else "")
+            return await orig(model, messages, **kw)
+
+        client.chat = chat_wrapper
+        await run_ping(client, [Target(model="m", nonce=True)], count=2, interval=0)
+    assert all(c.startswith("[nonce ") for c in sent)
+    assert sent[0].splitlines()[0] != sent[1].splitlines()[0]  # per-round unique
+    # the scenario prompt is still there, under the nonce line
+    assert all("pong" in c for c in sent)
+
+
+async def test_ping_no_nonce_is_deterministic(mock_server):
+    # Without nonce, rounds send byte-identical prompts (cacheable prefix).
+    async with LLMClient(mock_server.base_url) as client:
+        sent: list[str] = []
+        orig = client.chat
+
+        async def chat_wrapper(model, messages, **kw):  # type: ignore[no-untyped-def]
+            sent.append(messages[0]["content"] if messages else "")
+            return await orig(model, messages, **kw)
+
+        client.chat = chat_wrapper
+        await run_ping(client, _cfg(), count=2, interval=0)
+    assert sent[0] == sent[1]
+    assert not sent[0].startswith("[nonce ")
+
+
+async def test_ping_reports_cached_tokens(mock_server):
+    # agentic-basic sends a system prompt → the mock's usage reports the
+    # system chars as cached_tokens, which the session must sum and the
+    # sample must carry.
+    async with LLMClient(mock_server.base_url) as client:
+        stats, _ = await run_ping(client, _cfg(scenario="agentic-basic"), count=1, interval=0)
+    sample = stats[0].samples[0]
+    assert sample.ok
+    assert sample.cached_tokens is not None
+    assert stats[0].stats()["cached_tokens"] == sample.cached_tokens
+
+
+async def test_ping_nonce_with_pad_compose(mock_server):
+    # nonce first, padding second: [nonce line]\n<prompt>\n<padding...>
+    async with LLMClient(mock_server.base_url) as client:
+        sent: list[str] = []
+        orig = client.chat
+
+        async def chat_wrapper(model, messages, **kw):  # type: ignore[no-untyped-def]
+            sent.append(messages[0]["content"] if messages else "")
+            return await orig(model, messages, **kw)
+
+        client.chat = chat_wrapper
+        await run_ping(client, [Target(model="m", nonce=True, padding=200)], count=1, interval=0)
+    c = sent[0]
+    assert c.startswith("[nonce ")
+    assert "Reply with the single word: pong." in c
+    assert "Padding begins" in c  # pad applied after the (nonced) prompt

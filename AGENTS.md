@@ -27,9 +27,9 @@ no `config.yaml` — what to ping is given entirely on the command line.
 
 - A **target** = `--model MODEL` against the run's one provider, plus the
   scenario to run (`--scenario NAME`, default `pingpong`), optional
-  `--extra-body JSON`, and optional `--pad N` prompt shaping.
-  The CLI builds a slim `Target(model, scenario, extra_body, padding)`
-  — no name, no provider field
+  `--extra-body JSON`, and optional prompt shaping (`--pad N`, `--nonce`).
+  The CLI builds a slim `Target(model, scenario, extra_body, padding,
+  nonce)` — no name, no provider field
   (`src/llmping/config.py`, plus a wrap validator so any pydantic failure
   surfaces as `ConfigError` → exit 2).
 - One run = one provider + **one model**: `--provider NAME` (optional —
@@ -194,6 +194,17 @@ no `config.yaml` — what to ping is given entirely on the command line.
     any scenario (growing every later turn with it) — used to exercise
     size-dependent behavior/token accounting; `Target.padding` (≥ 0,
     invalid → exit 2), applied in `_run_scenario` via `_pad`.
+  - **`--nonce`** prepends a random per-round nonce line as the literal
+    FIRST content of the first user message (caches match sequential
+    prefixes — a nonce at the start busts the whole cache, at the end
+    almost nothing), forcing true cold prefill each round; off by default
+    (warm rounds match repeated-workload reality). `Target.nonce`, applied
+    in `_run_scenario` via `_nonce`, before `_pad`.
+  - **`cached_tokens`**: the server's `prompt_tokens_details.cached_tokens`
+    is parsed (Usage), summed per session, shown as `cached=` on the live
+    line and folded into the summary's input line — `input tokens: N total
+    (C cached) (all turns)` — making cache hit/miss observable instead of
+    guessed.
   - Round ok requires, in order: required tool called (tool-less scenarios
     skip this); **non-empty visible `content`** final answer
     (`reasoning_content` alone doesn't count — thinking models stop after a

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, TypedDict
@@ -39,7 +40,19 @@ def _pad(text: str, n: int) -> str:
         chunk = filler if remaining >= 60 else "x" * remaining
         lines.append(chunk)
         remaining -= len(chunk)
-    return "\n".join(lines)[: len(text) + n]
+    return "\n".join(lines)
+
+
+def _nonce(text: str, enabled: bool) -> str:
+    """Prepend a per-run random nonce line (before any padding, so the
+    nonce is the literal first content the model sees). KV-caches match
+    sequential prefixes, so a nonce at the START busts the whole cache;
+    at the end it would bust almost nothing. The line is explicitly
+    ignorable, so reasoning models don't act on it."""
+    if not enabled:
+        return text
+    tag = uuid.uuid4().hex[:12]
+    return f"[nonce {tag} — cache-busting run identifier, ignore this line]\n{text}"
 
 
 class ProbeResult(TypedDict):
@@ -51,6 +64,7 @@ class ProbeResult(TypedDict):
     e2e_ms: float | None
     input_tokens: int | None
     output_tokens: int | None
+    cached_tokens: int | None
     chars: int | None
     turns: int | None
 
@@ -65,6 +79,7 @@ class ModelStats(TypedDict):
     ttft: metrics.LatencyStats
     tokens: int
     input_tokens: int
+    cached_tokens: int
     chars: int
     turns: int
 
@@ -78,6 +93,7 @@ class Sample:
     e2e_ms: float | None = None
     input_tokens: int | None = None
     output_tokens: int | None = None
+    cached_tokens: int | None = None
     chars: int | None = None
     turns: int | None = None
     error: str | None = None
@@ -109,6 +125,7 @@ class PingStats:
             "ttft": metrics.ping_stats(self.ttfts()),
             "tokens": sum(s.output_tokens or 0 for s in self.samples),
             "input_tokens": sum(s.input_tokens or 0 for s in self.samples),
+            "cached_tokens": sum(s.cached_tokens or 0 for s in self.samples),
             "chars": sum(s.chars or 0 for s in self.samples),
             "turns": sum(s.turns or 0 for s in self.samples),
         }
@@ -175,9 +192,10 @@ async def _run_scenario(client: LLMClient, entry: Target, scenario: Scenario) ->
     messages: list[dict[str, Any]] = []
     if scenario.system_prompt:
         messages.append({"role": "system", "content": scenario.system_prompt})
-    # --pad N: inert characters grow the FIRST user message (and with it the
-    # whole conversation — every later turn repeats the messages)
-    messages.append({"role": "user", "content": _pad(scenario.user_prompt, entry.padding)})
+    # First user message: nonce first (must be the literal first content —
+    # KV-caches match sequential prefixes), then padding, then the prompt.
+    first_user = _pad(_nonce(scenario.user_prompt, entry.nonce), entry.padding)
+    messages.append({"role": "user", "content": first_user})
     tools = [t.schema() for t in scenario.tools]
     # None for the tool-less plain probe; __post_init__ guarantees that a
     # scenario with tools names one of them as required_tool.
@@ -187,6 +205,7 @@ async def _run_scenario(client: LLMClient, entry: Target, scenario: Scenario) ->
     e2e = 0.0
     input_tokens = 0
     output_tokens = 0
+    cached_tokens = 0
     chars = 0
     required_called = not forced_tool  # nothing to force for the plain probe
     used: set[str] = set()
@@ -200,6 +219,7 @@ async def _run_scenario(client: LLMClient, entry: Target, scenario: Scenario) ->
             "e2e_ms": e2e,
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
+            "cached_tokens": cached_tokens,
             "chars": chars,
             "turns": turns,
         }
@@ -234,6 +254,8 @@ async def _run_scenario(client: LLMClient, entry: Target, scenario: Scenario) ->
         # over turns reports the whole conversation's billed input
         if r.usage is not None and r.usage.prompt_tokens is not None:
             input_tokens += r.usage.prompt_tokens
+        if r.usage is not None and r.usage.cached_tokens is not None:
+            cached_tokens += r.usage.cached_tokens
         output_tokens += r.output_tokens or 0
         chars += _len_chars(r.content, r.reasoning_content)
 
@@ -332,6 +354,7 @@ async def run_ping(
                         e2e_ms=probe.get("e2e_ms"),
                         input_tokens=probe.get("input_tokens"),
                         output_tokens=probe.get("output_tokens"),
+                        cached_tokens=probe.get("cached_tokens"),
                         chars=probe.get("chars"),
                         error=probe.get("error"),
                         turns=probe.get("turns"),

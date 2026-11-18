@@ -40,6 +40,9 @@ class Usage:
     # The full raw block is still recorded verbatim in --dump-traffic.
     completion_tokens: int | None = None
     prompt_tokens: int | None = None
+    # Tokens the server served from KV cache (prefix match) — the difference
+    # between warm rounds and true cold prefill. None when unreported.
+    cached_tokens: int | None = None
 
 
 def _parse_usage(raw: dict | None) -> Usage | None:
@@ -48,6 +51,7 @@ def _parse_usage(raw: dict | None) -> Usage | None:
     return Usage(
         completion_tokens=raw.get("completion_tokens"),
         prompt_tokens=raw.get("prompt_tokens"),
+        cached_tokens=(raw.get("prompt_tokens_details") or {}).get("cached_tokens"),
     )
 
 
